@@ -1,0 +1,20 @@
+{
+  "name": "duelsplus-cli",
+  "module": "src/index.ts",
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "private": true,
+  "scripts": {
+    "start": "bun --hot src/index.ts"
+  },
+  "type": "module",
+  "dependencies": {
+    "@clack/prompts": "^0.11.0",
+    "@types/cli-progress": "^3.11.6",
+    "cli-progress": "^3.12.0"
+  }
+}
