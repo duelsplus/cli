@@ -1,0 +1,95 @@
+name: Build & Release
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  ENTRY: ./src/index.ts
+  OUT_BASE: duelsplus
+
+jobs:
+  build:
+    name: Build Binaries
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        #os/arch targets to cross-compile
+        target:
+          - bun-linux-x64
+          - bun-linux-arm64
+          - bun-windows-x64
+          - bun-darwin-x64
+          - bun-darwin-arm64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile || true
+
+      - name: Build executable
+        run: |
+          set -e
+          mkdir -p dist
+          TAG="${GITHUB_REF_NAME:-dev}"
+          TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          OUT="dist/${OUT_BASE}-${TAG}-${{ matrix.target }}"
+          if [[ "${{ matrix.target }}" == *windows* ]]; then
+            OUT="${OUT}.exe"
+          fi
+
+          echo "Building target=${{ matrix.target }} -> $OUT"
+          bun build --compile --minify --sourcemap --target="${{ matrix.target }}" "$ENTRY" \
+            --outfile "$OUT" \
+            --define BUILD_VERSION="\"${TAG}\"" \
+            --define BUILD_TIME="\"${TS}\""
+
+          ARCHDIR="dist/${OUT_BASE}-${TAG}-${{ matrix.target }}-bundle"
+          mkdir -p "$ARCHDIR"
+          cp "$OUT" "$ARCHDIR/"
+          [ -f LICENSE ] && cp LICENSE "$ARCHDIR/"
+          [ -f README.md ] && cp README.md "$ARCHDIR/"
+
+          if [[ "${{ matrix.target }}" == *windows* ]]; then
+            zip -r "${ARCHDIR}.zip" "$ARCHDIR"
+            echo "${ARCHDIR}.zip" > artifact.txt
+          else
+            tar -C dist -czf "${ARCHDIR}.tar.gz" "$(basename "$ARCHDIR")"
+            echo "${ARCHDIR}.tar.gz" > artifact.txt
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: artifact.txt
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          files: dist/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
