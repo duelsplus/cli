@@ -12,6 +12,7 @@ import { error, warn, info, reset } from "@lib/constants";
 const API_BASE = "https://duelsplus.com/api/releases";
 let proxyProc: any = null;
 let isProxyRunning = false;
+let isIntentionalShutdown = false;
 
 export const proxyEmitter = new EventEmitter();
 
@@ -208,6 +209,7 @@ export async function launchProxy(
 
   proxyProc = proc;
   isProxyRunning = true;
+  isIntentionalShutdown = false;
 
   //log stdout
   (async () => {
@@ -243,7 +245,8 @@ export async function launchProxy(
       const code = await proc.exited;
       isProxyRunning = false;
 
-      if (code !== 0) {
+      // Only emit crash if it wasn't an intentional shutdown
+      if (code !== 0 && !isIntentionalShutdown) {
         proxyEmitter.emit(
           "crash",
           `Proxy process exited with a non-zero exit code: ${code}`,
@@ -251,13 +254,16 @@ export async function launchProxy(
       }
     } catch (err: any) {
       isProxyRunning = false;
-      proxyEmitter.emit("crash", err?.stack);
+      if (!isIntentionalShutdown) {
+        proxyEmitter.emit("crash", err?.stack);
+      }
     }
   })();
 }
 
 export function killProxy() {
   if (proxyProc) {
+    isIntentionalShutdown = true;
     try {
       if (os.platform() === "win32") {
         // Windows doesn't support SIGINT/SIGTERM properly, use kill() without signal
