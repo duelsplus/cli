@@ -8,6 +8,7 @@ import {
   getProxyStatus,
   waitForProxyToStop,
 } from "@core/proxy";
+import { checkForUpdates as checkForCliUpdates } from "@core/updates"
 
 const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),
@@ -37,6 +38,7 @@ proxyEmitter.on("crash", (msg) => {
 });
 
 (async () => {
+  await checkForCliUpdates();
   switch (command) {
     case undefined:
       const port = values.port ? Number(values.port) : 25565;
