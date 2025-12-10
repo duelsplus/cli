@@ -1,4 +1,4 @@
-import { error, warn, info, reset } from "@lib/constants";
+import { error, warn, info, reset, brand } from "@lib/constants";
 import { parseArgs } from "node:util";
 import run from "@cmd/run";
 import {
@@ -14,11 +14,36 @@ const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),
   options: {
     port: { type: "string" },
+    help: { type: "boolean", short: "h" },
   },
   strict: true,
   allowPositionals: true,
 });
 const command = positionals[0];
+
+function showHelp() {
+  console.log(`
+${brand} CLI
+
+${info}Commands:${reset}
+  (default)    Start the proxy server
+  help         Show this help message
+  update       Force update the proxy to latest version
+  kill         Stop a running proxy
+
+${info}Options:${reset}
+  --port       Port to run the proxy on (default: 25565)
+  --help, -h   Show this help message
+
+${info}Interactive Commands:${reset}
+  Once the proxy is running, you can type these commands:
+  help         Show available commands
+  status       Show proxy status
+  update       Check for proxy updates
+  stop         Stop the proxy and exit
+  clear        Clear the terminal
+`);
+}
 
 process.on("SIGINT", async () => {
   killProxy();
@@ -28,7 +53,7 @@ process.on("SIGINT", async () => {
 
 proxyEmitter.on("crash", (msg) => {
   console.error(
-    `\n${error}Duels+ has crashed unexpectedly. See details below:${reset}`,
+    `\n${brand} ${error}has crashed unexpectedly. See details below:${reset}`,
   );
   console.error(`${error}${msg}${reset}`);
   console.error(
@@ -38,6 +63,12 @@ proxyEmitter.on("crash", (msg) => {
 });
 
 (async () => {
+  // Handle --help flag
+  if (values.help) {
+    showHelp();
+    process.exit(0);
+  }
+
   await checkForCliUpdates();
   switch (command) {
     case undefined:
@@ -54,13 +85,19 @@ proxyEmitter.on("crash", (msg) => {
         }
       }
       break;
+    case "help":
+      showHelp();
+      process.exit(0);
+      break;
     case "update":
       await checkForUpdates();
-      process.exit(1);
+      process.exit(0);
+      break;
     case "kill":
       killProxy();
       await waitForProxyToStop();
       process.exit(0);
+      break;
     default:
       console.error(`${error}Unknown command "${command}"${reset}`);
       process.exit(1);
