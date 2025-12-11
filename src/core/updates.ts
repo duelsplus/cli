@@ -1,5 +1,4 @@
 import semver from "semver";
-import { intro, outro } from "@clack/prompts";
 import { version as localVersion } from "../../package.json";
 import { info, warn, reset } from "@lib/constants";
 
@@ -28,10 +27,10 @@ function isUpdateAvailable(local: string, remote: string): boolean {
 }
 
 function notify(latest: string) {
-  intro(
+  console.log(
     `Update available: ${warn}${localVersion}${reset} → ${info}${latest}${reset}`,
   );
-  outro(
+  console.log(
     `View release: ${info}https://github.com/duelsplus/cli/releases/tag/v${latest}${reset}`,
   );
 }
