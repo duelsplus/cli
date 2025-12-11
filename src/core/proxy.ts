@@ -7,6 +7,7 @@ import path from "node:path";
 import os from "node:os";
 import net from "node:net";
 import cliProgress from "cli-progress";
+import { runtimeState } from "@/lib/state";
 import { error, warn, info, reset } from "@lib/constants";
 
 const API_BASE = "https://duelsplus.com/api/releases";
@@ -157,6 +158,17 @@ export async function checkForUpdates(
   const platformTag = getPlatform();
   const asset = latest.assets?.find((a: any) => a.name.includes(platformTag));
   if (!asset) throw new Error(`No asset for platform ${platformTag}`);
+
+  if (runtimeState.noUpdate) {
+    const files = await readdir(installDir).catch(() => []);
+    const cached = files.find((f) => f.includes(platformTag));
+    if (!cached) {
+      throw new Error(
+        "No cached proxy install is available and updates are disabled. Cannot proceed.",
+      );
+    }
+    return path.join(installDir, cached);
+  }
 
   const filePath = path.join(installDir, asset.name);
   //todo: return checksums in api and compare with downloaded filePath

@@ -1,4 +1,5 @@
 import { error, warn, info, reset, brand } from "@lib/constants";
+import { runtimeState } from "@lib/state";
 import { parseArgs } from "node:util";
 import run from "@cmd/run";
 import {
@@ -8,13 +9,15 @@ import {
   getProxyStatus,
   waitForProxyToStop,
 } from "@core/proxy";
-import { checkForUpdates as checkForCliUpdates } from "@core/updates"
+import { checkForUpdates as checkForCliUpdates } from "@core/updates";
 
 const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),
   options: {
     port: { type: "string", short: "p" },
     help: { type: "boolean", short: "h" },
+    "no-update": { type: "boolean" },
+    "updates-are-a-lie": { type: "boolean" },
   },
   strict: false,
   allowPositionals: true,
@@ -68,8 +71,19 @@ proxyEmitter.on("crash", (msg) => {
     showHelp();
     process.exit(0);
   }
-
-  await checkForCliUpdates();
+  if (values["no-update"]) {
+    runtimeState.noUpdate = true;
+    console.warn(
+      `${warn}You have disabled updates using the --no-update argument\nAutomatic updates keep Duels+ safe and stable for both sides. Updates contain bug fixes and security patches. Skipping them leaves you exposed. Proceed at your own risk.`,
+    );
+  } else if (values["updates-are-a-lie"]) {
+    runtimeState.noUpdate = true;
+    console.warn(
+      `${warn}You have disabled updates using the --updates-are-a-lie argument\nAutomatic updates keep Duels+ safe and stable for both sides. Updates contain bug fixes and security patches. Skipping them leaves you exposed. Proceed at your own risk.`,
+    );
+  } else {
+    await checkForCliUpdates();
+  }
   switch (command) {
     case undefined:
       const port = values.port ? Number(values.port) : 25565;
