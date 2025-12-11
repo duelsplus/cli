@@ -15,6 +15,7 @@
   "type": "module",
   "dependencies": {
     "@clack/prompts": "^0.11.0",
+    "@inquirer/prompts": "^8.0.2",
     "@types/cli-progress": "^3.11.6",
     "@types/semver": "^7.7.1",
     "cli-progress": "^3.12.0",

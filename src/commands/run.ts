@@ -1,25 +1,56 @@
-import { error, warn, info, reset, prompt, brand, brandRed, brandDarkRed } from "@lib/constants";
+import {
+  error,
+  warn,
+  info,
+  reset,
+  prompt,
+  brand,
+  brandRed,
+  brandDarkRed,
+} from "@lib/constants";
 import { tokenExists, getToken, saveToken, verifyToken } from "@core/auth";
-import { proxyEmitter, launchProxy, killProxy, waitForProxyToStop, getProxyStatus } from "@core/proxy";
+import {
+  proxyEmitter,
+  launchProxy,
+  killProxy,
+  waitForProxyToStop,
+  getProxyStatus,
+} from "@core/proxy";
 import { checkForUpdates } from "@core/proxy";
-import { password, log, isCancel } from "@clack/prompts";
+import { password, input, select, confirm } from "@inquirer/prompts";
 import * as readline from "node:readline";
 import { version } from "../../package.json";
 
 async function promptToken(): Promise<string> {
   while (true) {
-    const input = await password({
+    const token = await password({
       message: "Enter your verification token:",
-      mask: '*',
-      validate(value) {
-        return value.trim().length === 0 ? "Token cannot be empty" : undefined;
+      mask: "*",
+      async validate(value: string) {
+        if (value.trim().length === 0) {
+          return "Invalid token";
+        }
+
+        const verify = await verifyToken(value);
+        if (!verify.success) {
+          if (verify.code === "banned") {
+            console.error(
+              `${error}This account has been banned for breaching the Terms of Service.${reset}`,
+            );
+            console.log(
+              `${warn}Appeal this decision:${reset} ${info}https://discord.gg/YD4JZnuGYv${reset}\n`,
+            );
+            await new Promise(() => {}); //hang forever
+          }
+          return "Invalid token";
+        }
+        return true;
       },
     });
 
-    if (isCancel(input)) process.exit(1);
-
-    if (typeof input === "string") {
-      return input;
+    if (typeof token === "string") {
+      await saveToken(token);
+      return token;
     }
   }
 }
@@ -68,7 +99,9 @@ async function startInteractivePrompt(port: number) {
             await checkForUpdates();
             console.log(`${info}Update check complete.${reset}`);
           } catch (err) {
-            console.error(`${error}Failed to check for updates: ${err}${reset}`);
+            console.error(
+              `${error}Failed to check for updates: ${err}${reset}`,
+            );
           }
           break;
         case "stop":
@@ -113,25 +146,8 @@ export default async function run(port = 25565) {
   }
 
   //verification
-  while (true) {
-    if (!token) {
-      enteredManually = true;
-      token = await promptToken();
-    }
-
-    const verify = await verifyToken(token);
-    if (verify.success) {
-      if (enteredManually) await saveToken(token);
-      break;
-    } else if (!verify.success && verify.code === "banned") {
-      if (enteredManually) await saveToken(token);
-      log.error("This account has been banned for breaching the Terms of Service.");
-      log.message(`${warn}Appeal this decision:${reset} ${info}https://discord.gg/YD4JZnuGYv${reset}\n`);
-      await new Promise(() => {}); //hang forever
-    }
-    //console.warn(`${warn}Invalid token.${reset}`);
-    log.error("Invalid token.");
-    token = null; //retry
+  while (!token) {
+    token = await promptToken();
   }
 
   //const user = await ensureEntitled(token);
