@@ -1,6 +1,6 @@
 {
   "name": "duelsplus-cli",
-  "version": "1.1.0",
+  "version": "1.2.1",
   "module": "src/index.ts",
   "devDependencies": {
     "@types/bun": "latest"
