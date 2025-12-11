@@ -18,6 +18,8 @@ const { values, positionals } = parseArgs({
     help: { type: "boolean", short: "h" },
     "no-update": { type: "boolean" },
     "updates-are-a-lie": { type: "boolean" },
+    "force-update": { type: "boolean" }, //--force/-f does the same
+    force: { type: "boolean", short: "f" },
   },
   strict: false,
   allowPositionals: true,
@@ -71,8 +73,19 @@ proxyEmitter.on("crash", (msg) => {
     showHelp();
     process.exit(0);
   }
+  if (values["force-update"] || values.force) {
+    runtimeState.forceUpdate = true;
+  }
+  if (
+    (values["force-update"] || values.force) &&
+    (values["no-update"] || values["updates-are-a-lie"])
+  ) {
+    console.log(
+      `${error}That combination doesn't make sense. You can't force an update and skip updates at the same time.`,
+    );
+    process.exit(1);
+  }
   if (values["no-update"]) {
-    runtimeState.noUpdate = true;
     console.warn(
       `${warn}You have disabled updates using the --no-update argument\nAutomatic updates keep Duels+ safe and stable for both sides. Updates contain bug fixes and security patches. Skipping them leaves you exposed. Proceed at your own risk.`,
     );

@@ -65,6 +65,16 @@ async function downloadArtifact(
   if (!res.ok) throw new Error(`Failed to download artifact: ${res.status}`);
 
   await mkdir(path.dirname(destPath), { recursive: true }).catch(() => {});
+
+  if (fs.existsSync(destPath)) {
+    try {
+      fs.unlinkSync(destPath);
+    } catch (err) {
+      console.warn(
+        `${warn}Failed to delete cached proxy install.`,
+      );
+    }
+  }
   //create filesink
   const sink = file(destPath);
   const writer = sink.writer();
@@ -175,6 +185,9 @@ export async function checkForUpdates(
   //instead of assuming based on filesize
   const exists = await file(filePath).exists();
   let needsDownload = !exists;
+  if (runtimeState.forceUpdate) {
+    needsDownload = true;
+  }
   if (exists) {
     try {
       const stats = fs.statSync(filePath);
