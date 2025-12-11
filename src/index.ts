@@ -1,6 +1,7 @@
 import { error, warn, info, reset, brand } from "@lib/constants";
 import { runtimeState } from "@lib/state";
 import { parseArgs } from "node:util";
+import { version } from "../package.json";
 import run from "@cmd/run";
 import {
   proxyEmitter,
@@ -33,6 +34,7 @@ ${brand} CLI
 ${info}Commands:${reset}
   (default)           Start the proxy server
   help                Show this help message
+  version             Show the CLI version
   update              Force update the proxy to latest version
   kill                Stop a running proxy
 
@@ -116,6 +118,10 @@ proxyEmitter.on("crash", (msg) => {
       break;
     case "help":
       showHelp();
+      process.exit(0);
+      break;
+    case "version":
+      console.log(`v${version}`);
       process.exit(0);
       break;
     case "update":
