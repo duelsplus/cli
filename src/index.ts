@@ -16,7 +16,7 @@ const { values, positionals } = parseArgs({
     port: { type: "string", short: "p" },
     help: { type: "boolean", short: "h" },
   },
-  strict: true,
+  strict: false,
   allowPositionals: true,
 });
 const command = positionals[0];
