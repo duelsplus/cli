@@ -44,11 +44,11 @@ ${info}Options:${reset}
 
 ${info}Interactive Commands:${reset}
   Once the proxy is running, you can type these commands:
-  help               Show available commands
-  status             Show proxy status
-  update             Check for proxy updates
-  stop               Stop the proxy and exit
-  clear              Clear the terminal
+  help                Show available commands
+  status              Show proxy status
+  update              Check for proxy updates
+  stop                Stop the proxy and exit
+  clear               Clear the terminal
 `);
 }
 
