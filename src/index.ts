@@ -13,7 +13,7 @@ import { checkForUpdates as checkForCliUpdates } from "@core/updates"
 const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),
   options: {
-    port: { type: "string" },
+    port: { type: "string", short: "p" },
     help: { type: "boolean", short: "h" },
   },
   strict: true,
