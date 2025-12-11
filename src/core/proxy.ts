@@ -152,6 +152,15 @@ async function downloadArtifact(
 export async function checkForUpdates(
   emit?: (ev: string, payload?: any) => void,
 ) {
+  if (runtimeState.proxyPath) {
+    const absolutePath = path.resolve(runtimeState.proxyPath);
+    if (!fs.existsSync(absolutePath)) {
+      throw new Error(`Custom proxy binary not found at: ${absolutePath}`);
+    }
+    console.info(`${info}Using custom proxy: ${absolutePath}${reset}`);
+    return absolutePath;
+  }
+
   const installDir = getInstallDir();
   await mkdir(installDir, { recursive: true }).catch(() => {});
   //emit?.("log", `Proxy directory: ${installDir}`);
@@ -294,7 +303,8 @@ export function killProxy() {
         // Windows doesn't support SIGINT/SIGTERM properly, use kill() without signal
         proxyProc.kill();
       } else {
-        proxyProc.kill("SIGINT");
+        // SIGTERM instead of SIGINT because pkg config doesnt work
+        proxyProc.kill("SIGTERM");
       }
     } catch {
       try {
