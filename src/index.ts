@@ -31,22 +31,24 @@ function showHelp() {
 ${brand} CLI
 
 ${info}Commands:${reset}
-  (default)    Start the proxy server
-  help         Show this help message
-  update       Force update the proxy to latest version
-  kill         Stop a running proxy
+  (default)           Start the proxy server
+  help                Show this help message
+  update              Force update the proxy to latest version
+  kill                Stop a running proxy
 
 ${info}Options:${reset}
-  --port       Port to run the proxy on (default: 25565)
-  --help, -h   Show this help message
+  --port              Port to run the proxy on (default: 25565)
+  --no-update         Skip update step when starting
+  --force-update, -f  Force download the latest proxy release
+  --help, -h          Show this help message
 
 ${info}Interactive Commands:${reset}
   Once the proxy is running, you can type these commands:
-  help         Show available commands
-  status       Show proxy status
-  update       Check for proxy updates
-  stop         Stop the proxy and exit
-  clear        Clear the terminal
+  help               Show available commands
+  status             Show proxy status
+  update             Check for proxy updates
+  stop               Stop the proxy and exit
+  clear              Clear the terminal
 `);
 }
 
