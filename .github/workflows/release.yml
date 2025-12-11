@@ -50,7 +50,7 @@ jobs:
           fi
 
           echo "Building target=${{ matrix.target }} -> $OUT"
-          bun build --compile --production --bytecode --sourcemap --footer '// made with love' --target="${{ matrix.target }}" "$ENTRY" \
+          bun build --compile --production --sourcemap --footer '// made with love' --target="${{ matrix.target }}" "$ENTRY" \
             --outfile "$OUT" \
             --define BUILD_VERSION="\"${TAG}\"" \
             --define BUILD_TIME="\"${TS}\""
