@@ -303,13 +303,25 @@ export function killProxy() {
         //best-effort
       }
     }
-    proxyProc = null;
-    isProxyRunning = false;
   }
 }
 
 export async function waitForProxyToStop() {
+  if (proxyProc) {
+    try {
+      await proxyProc.exited;
+    } catch (error) {
+      // the process here should have already exited
+      // no need to forward the error
+    }
+  }
+  
+  // gotta double check, so we poll babyyy
   return new Promise<void>((resolve) => {
+    if (!getProxyStatus()) {
+      resolve();
+    }
+
     const interval = setInterval(() => {
       if (!getProxyStatus()) {
         clearInterval(interval);
