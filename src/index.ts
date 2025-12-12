@@ -21,6 +21,7 @@ const { values, positionals } = parseArgs({
     "updates-are-a-lie": { type: "boolean" },
     "force-update": { type: "boolean" }, //--force/-f does the same
     force: { type: "boolean", short: "f" },
+    proxy: { type: "string" },
   },
   strict: false,
   allowPositionals: true,
@@ -40,6 +41,7 @@ ${info}Commands:${reset}
 
 ${info}Options:${reset}
   --port              Port to run the proxy on (default: 25565)
+  --proxy <path>      Use a custom binary instead of downloading
   --no-update         Skip update step when starting
   --force-update, -f  Force download the latest proxy release
   --help, -h          Show this help message
@@ -79,6 +81,10 @@ proxyEmitter.on("crash", (msg) => {
   }
   if (values["force-update"] || values.force) {
     runtimeState.forceUpdate = true;
+  }
+  if (values["proxy"]) {
+    runtimeState.proxyPath = values.proxy;
+    console.log(`${info}Using custom proxy binary: ${values.proxy}${reset}`);
   }
   if (
     (values["force-update"] || values.force) &&
