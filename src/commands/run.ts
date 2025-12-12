@@ -15,6 +15,9 @@ import {
   killProxy,
   waitForProxyToStop,
   getProxyStatus,
+  checkForExistingProxy,
+  attachToExistingProxy,
+  detachProxy,
 } from "@core/proxy";
 import { checkForUpdates } from "@core/proxy";
 import { password, input, select, confirm } from "@inquirer/prompts";
@@ -61,6 +64,7 @@ ${info}Available commands:${reset}
   help     - Show this help message
   status   - Show proxy status
   update   - Check for proxy updates
+  detach   - Detach from proxy (keeps proxy running in background)
   stop     - Stop the proxy and exit
   clear    - Clear the terminal
 `);
@@ -80,6 +84,8 @@ async function startInteractivePrompt(port: number) {
     input: process.stdin,
     output: process.stdout,
   });
+
+  let isDetaching = false;
 
   const promptUser = () => {
     rl.question(prompt, async (input) => {
@@ -101,6 +107,22 @@ async function startInteractivePrompt(port: number) {
           } catch (err) {
             console.error(
               `${error}Failed to check for updates: ${err}${reset}`,
+            );
+          }
+          break;
+        case "detach":
+          try {
+            isDetaching = true;
+            await detachProxy(port);
+            console.log(`${info}Proxy detached. It will continue running in the background.${reset}`);
+            console.log(`${info}You can reconnect by running the program again.${reset}`);
+            rl.close();
+            process.exit(0);
+            return;
+          } catch (err) {
+            isDetaching = false;
+            console.error(
+              `${error}Failed to detach proxy: ${err}${reset}`,
             );
           }
           break;
@@ -130,8 +152,10 @@ async function startInteractivePrompt(port: number) {
   };
 
   rl.on("close", () => {
-    // Handle Ctrl+C or stream end
-    killProxy();
+    // Handle Ctrl+C or stream end - but not when detaching
+    if (!isDetaching) {
+      killProxy();
+    }
   });
 
   console.log(`\n${info}Type 'help' for available commands.${reset}\n`);
@@ -152,6 +176,27 @@ export default async function run(port = 25565) {
 
   //const user = await ensureEntitled(token);
   //
+  
+  // Check for existing proxy process
+  const existingProxy = await checkForExistingProxy(port);
+  if (existingProxy) {
+    console.log(`${info}Found existing proxy process (PID: ${existingProxy.pid}). Attaching...${reset}`);
+    try {
+      await attachToExistingProxy(existingProxy.pid, existingProxy.port, (event, payload) => {
+        if (event === "log") {
+          console.log(payload);
+        }
+      });
+      console.log(`${info}Attached to existing proxy process (PID: ${existingProxy.pid}, Port: ${existingProxy.port})${reset}`);
+    } catch (err) {
+      console.error(`${error}Failed to attach: ${err}${reset}`);
+      throw err;
+    }
+    // Start the interactive command prompt immediately since we're attached
+    await startInteractivePrompt(port);
+    return;
+  }
+
   let proxyReady = false;
   let resolveProxyReady: () => void;
   const proxyReadyPromise = new Promise<void>((resolve) => {

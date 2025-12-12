@@ -12,13 +12,95 @@ import { error, warn, info, reset } from "@lib/constants";
 
 const API_BASE = "https://duelsplus.com/api/releases";
 let proxyProc: any = null;
+let proxyPath: string | null = null; // Cache the proxy path
 let isProxyRunning = false;
 let isIntentionalShutdown = false;
+let isAttachedToExisting = false;
+let attachedPid: number | null = null;
+let attachedPort: number | null = null;
 
 export const proxyEmitter = new EventEmitter();
 
 export function getProxyStatus() {
   return isProxyRunning;
+}
+
+function getPidFilePath() {
+  return path.join(getInstallDir(), "proxy.lock");
+}
+
+interface PidFileData {
+  pid: number;
+  port: number;
+}
+
+async function savePidFile(pid: number, port: number) {
+  const pidFilePath = getPidFilePath();
+  const data: PidFileData = { pid, port };
+  await mkdir(path.dirname(pidFilePath), { recursive: true }).catch(() => {});
+  await Bun.write(pidFilePath, JSON.stringify(data));
+}
+
+async function readPidFile(): Promise<PidFileData | null> {
+  const pidFilePath = getPidFilePath();
+  if (!fs.existsSync(pidFilePath)) {
+    return null;
+  }
+  try {
+    const content = await Bun.file(pidFilePath).text();
+  //might need to use .exe
+    return JSON.parse(content) as PidFileData;
+  } catch {
+    return null;
+  }
+}
+
+async function deletePidFile() {
+  const pidFilePath = getPidFilePath();
+  if (fs.existsSync(pidFilePath)) {
+    try {
+      fs.unlinkSync(pidFilePath);
+    } catch {
+      //ignore
+    }
+  }
+}
+
+function isProcessRunning(pid: number): boolean {
+  try {
+    // Signal 0 doesn't actually send a signal, just checks if process exists
+    // trust
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function checkForExistingProxy(port: number): Promise<{ pid: number; port: number } | null> {
+  // Check PID file first
+  const pidData = await readPidFile();
+  if (!pidData) {
+    // No PID file, no existing proxy we know about
+    return null;
+  }
+
+  // Check if the PID file matches the port
+  if (pidData.port !== port) {
+    // PID file is for a different port
+    await deletePidFile();
+    return null;
+  }
+
+  // Check if the process is still running
+  if (!isProcessRunning(pidData.pid)) {
+    // Process is dead, clean up PID file
+    await deletePidFile();
+    return null;
+  }
+
+  // Process is running and matches our port
+  return pidData;
 }
 
 function getPlatform() {
@@ -151,20 +233,24 @@ async function downloadArtifact(
 
 export async function checkForUpdates(
   emit?: (ev: string, payload?: any) => void,
+  silent = false,
 ) {
   if (runtimeState.proxyPath) {
     const absolutePath = path.resolve(runtimeState.proxyPath);
     if (!fs.existsSync(absolutePath)) {
       throw new Error(`Custom proxy binary not found at: ${absolutePath}`);
     }
-    console.info(`${info}Using custom proxy: ${absolutePath}${reset}`);
+    if (!silent) {
+      console.info(`${info}Using custom proxy: ${absolutePath}${reset}`);
+    }
     return absolutePath;
   }
 
   const installDir = getInstallDir();
   await mkdir(installDir, { recursive: true }).catch(() => {});
-  //emit?.("log", `Proxy directory: ${installDir}`);
-  console.info(`${info}Proxy directory: ${installDir}${reset}`);
+  if (!silent) {
+    console.info(`${info}Proxy directory: ${installDir}${reset}`);
+  }
 
   const releasesRes = await fetch(API_BASE);
   if (!releasesRes.ok)
@@ -229,26 +315,33 @@ export async function launchProxy(
     );
   }
 
-  const proxyPath = await checkForUpdates(emit);
-  //might need to use .exe
-  if (!fs.existsSync(proxyPath))
-    throw new Error(`Proxy not found at ${proxyPath}`);
+  const currentProxyPath = await checkForUpdates(emit);
+  proxyPath = currentProxyPath; // Cache for later use
+  if (!fs.existsSync(currentProxyPath))
+    throw new Error(`Proxy not found at ${currentProxyPath}`);
 
-  const proc = Bun.spawn([proxyPath, "--port", String(port)], {
+  // Always spawn detached so the process can detach
+  const proc = Bun.spawn([currentProxyPath, "--port", String(port)], {
     cwd: path.dirname(proxyPath),
     stdout: "pipe",
     stderr: "pipe",
-    detached: false,
+    detached: true,
   });
 
   proxyProc = proc;
   isProxyRunning = true;
   isIntentionalShutdown = false;
+  isAttachedToExisting = false;
+  attachedPid = null;
+  attachedPort = null;
 
   //log stdout
   (async () => {
     try {
       for await (const chunk of proc.stdout as any) {
+        if (isIntentionalShutdown)
+          continue;
+        
         const text = new TextDecoder().decode(chunk).trim();
         if (
           !text.includes("[launcher:ign]") &&
@@ -266,6 +359,9 @@ export async function launchProxy(
   (async () => {
     try {
       for await (const chunk of proc.stderr as any) {
+        if (isIntentionalShutdown)
+          continue;
+        
         emit?.("log", new TextDecoder().decode(chunk).trim());
       }
     } catch (err) {
@@ -278,6 +374,7 @@ export async function launchProxy(
     try {
       const code = await proc.exited;
       isProxyRunning = false;
+      await deletePidFile();
 
       // Only emit crash if it wasn't an intentional shutdown
       if (code !== 0 && !isIntentionalShutdown) {
@@ -288,6 +385,7 @@ export async function launchProxy(
       }
     } catch (err: any) {
       isProxyRunning = false;
+      await deletePidFile();
       if (!isIntentionalShutdown) {
         proxyEmitter.emit("crash", err?.stack);
       }
@@ -295,7 +393,63 @@ export async function launchProxy(
   })();
 }
 
+export async function attachToExistingProxy(pid: number, port: number, emit?: (ev: string, payload?: any) => void) {
+  if (!isProcessRunning(pid)) {
+    await deletePidFile();
+    throw new Error(`Proxy process ${pid} is not running`);
+  }
+
+  isProxyRunning = true;
+  isAttachedToExisting = true;
+  attachedPid = pid;
+  attachedPort = port;
+  proxyProc = null; // We don't have a process object for attached processes, we gotta fix that soon
+
+  (async () => {
+    const checkInterval = setInterval(() => {
+      if (isAttachedToExisting && attachedPid !== null) {
+        if (!isProcessRunning(attachedPid)) {
+          // Process died (rip)
+          isProxyRunning = false;
+          isAttachedToExisting = false;
+          attachedPid = null;
+          attachedPort = null;
+          clearInterval(checkInterval);
+          deletePidFile();
+          proxyEmitter.emit("crash", `Attached proxy process ${pid} has exited`);
+        }
+      } else {
+        clearInterval(checkInterval);
+      }
+    }, 1000);
+  })();
+}
+
 export function killProxy() {
+  if (isAttachedToExisting && attachedPid !== null) {
+    // Kill the attached process by PID
+    isIntentionalShutdown = true;
+    try {
+      if (os.platform() === "win32") {
+        process.kill(attachedPid);
+      } else {
+        process.kill(attachedPid, "SIGTERM");
+      }
+    } catch {
+      try {
+        process.kill(attachedPid);
+      } catch {
+        //best-effort
+      }
+    }
+    isProxyRunning = false;
+    isAttachedToExisting = false;
+    attachedPid = null;
+    attachedPort = null;
+    deletePidFile();
+    return;
+  }
+
   if (proxyProc) {
     isIntentionalShutdown = true;
     try {
@@ -313,10 +467,56 @@ export function killProxy() {
         //best-effort
       }
     }
+    deletePidFile();
   }
 }
 
+export async function detachProxy(port: number) {
+  if (!isProxyRunning) {
+    throw new Error("No proxy process to detach");
+  }
+
+  if (isAttachedToExisting && attachedPid !== null) {
+    // Already attached to a detached process
+    // Save PID and dip
+    await savePidFile(attachedPid, port);
+    isProxyRunning = false;
+    isAttachedToExisting = false;
+    attachedPid = null;
+    attachedPort = null;
+    return;
+  }
+
+  if (!proxyProc) {
+    throw new Error("No proxy process to detach");
+  }
+
+  // Save PID file and unref
+  const pid = proxyProc.pid;
+  if (pid) {
+    await savePidFile(pid, port);
+    proxyProc.unref();
+  }
+
+  // Clear our stateeeee
+  proxyProc = null;
+  isProxyRunning = false;
+}
+
 export async function waitForProxyToStop() {
+  if (isAttachedToExisting && attachedPid !== null) {
+    // Poll to check if the attached process has stopped
+    return new Promise<void>((resolve) => {
+      const interval = setInterval(() => {
+        if (!isProcessRunning(attachedPid!)) {
+          isProxyRunning = false;
+          clearInterval(interval);
+          resolve();
+        }
+      }, 100);
+    });
+  }
+
   if (proxyProc) {
     try {
       await proxyProc.exited;
