@@ -8,6 +8,7 @@ import {
 } from "@lib/constants";
 import { tokenExists, getToken, saveToken, verifyToken } from "@core/auth";
 import { handleStats } from "@cmd/stats";
+import { handleSettings } from "@cmd/settings";
 import { handleHelp } from "@cmd/help";
 import { handleStatus } from "@cmd/status";
 import { handleUpdate } from "@cmd/update";
@@ -30,9 +31,8 @@ async function promptToken(): Promise<string> {
       message: "Enter your verification token:",
       mask: "*",
       async validate(value: string) {
-        if (value.trim().length === 0) {
+        if (value.trim().length === 0)
           return "Invalid token";
-        }
 
         const verify = await verifyToken(value);
         if (!verify.success) {
@@ -72,6 +72,8 @@ async function startInteractivePrompt(port: number) {
       const parts = input.trim().split(/\s+/);
       const command = parts[0]?.toLowerCase() || "";
       const subcommand = parts[1];
+      const arg1 = parts[2];
+      const arg2 = parts[3];
 
       switch (command) {
         case "help":
@@ -108,6 +110,9 @@ async function startInteractivePrompt(port: number) {
         case "stats":
           await handleStats(subcommand, true);
           break;
+        case "settings":
+          await handleSettings(subcommand, arg1, arg2, true);
+          break;
         case "":
           // Empty input, just show prompt again
           break;
@@ -122,9 +127,8 @@ async function startInteractivePrompt(port: number) {
 
   rl.on("close", () => {
     // Handle Ctrl+C or stream end - but not when detaching
-    if (!isDetaching) {
+    if (!isDetaching)
       killProxy();
-    }
   });
 
   console.log(`\n${info}Type 'help' for available commands.${reset}\n`);
@@ -134,14 +138,12 @@ async function startInteractivePrompt(port: number) {
 export default async function run(port = 25565) {
   let token: string | null = null;
   let enteredManually = false;
-  if (await tokenExists()) {
+  if (await tokenExists())
     token = await getToken();
-  }
 
   //verification
-  while (!token) {
+  while (!token)
     token = await promptToken();
-  }
 
   //const user = await ensureEntitled(token);
   //

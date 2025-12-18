@@ -12,6 +12,7 @@ import {
 } from "@core/proxy";
 import { checkForUpdates as checkForCliUpdates } from "@core/updates";
 import { handleStats } from "@cmd/stats";
+import { handleSettings } from "@cmd/settings";
 
 const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),
@@ -29,6 +30,8 @@ const { values, positionals } = parseArgs({
 });
 const command = positionals[0];
 const subcommand = positionals[1];
+const arg1 = positionals[2];
+const arg2 = positionals[3];
 
 function showHelp() {
   console.log(`
@@ -41,6 +44,7 @@ ${info}Commands:${reset}
   update              Force update the proxy to latest version
   kill                Stop a running proxy
   stats [user|global] Show statistics (user: your stats, global: server stats)
+  settings [get|set]  Manage settings (enableMsa, proxyPort, autoUpdate)
 
 ${info}Options:${reset}
   --port              Port to run the proxy on (default: 25565)
@@ -151,6 +155,10 @@ proxyEmitter.on("crash", (msg) => {
       break;
     case "stats":
       await handleStats(subcommand, false);
+      process.exit(0);
+      break;
+    case "settings":
+      await handleSettings(subcommand, arg1, arg2, false);
       process.exit(0);
       break;
     default:

@@ -10,5 +10,6 @@ ${info}Available commands:${reset}
   stop     - Stop the proxy and exit
   clear    - Clear the terminal
   stats [user|global] - Show statistics (user: your stats, global: server stats)
+  settings [get|set] - Manage settings (enableMsa, proxyPort, autoUpdate)
 `);
 }
