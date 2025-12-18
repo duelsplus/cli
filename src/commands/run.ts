@@ -5,24 +5,24 @@ import {
   reset,
   prompt,
   brand,
-  brandRed,
-  brandDarkRed,
 } from "@lib/constants";
 import { tokenExists, getToken, saveToken, verifyToken } from "@core/auth";
+import { handleStats } from "@cmd/stats";
+import { handleHelp } from "@cmd/help";
+import { handleStatus } from "@cmd/status";
+import { handleUpdate } from "@cmd/update";
+import { handleDetach } from "@cmd/detach";
+import { handleStop } from "@cmd/stop";
+import { handleClear } from "@cmd/clear";
 import {
   proxyEmitter,
   launchProxy,
   killProxy,
-  waitForProxyToStop,
-  getProxyStatus,
   checkForExistingProxy,
   attachToExistingProxy,
-  detachProxy,
 } from "@core/proxy";
-import { checkForUpdates } from "@core/proxy";
-import { password, input, select, confirm } from "@inquirer/prompts";
+import { password } from "@inquirer/prompts";
 import * as readline from "node:readline";
-import { version } from "../../package.json";
 
 async function promptToken(): Promise<string> {
   while (true) {
@@ -58,26 +58,6 @@ async function promptToken(): Promise<string> {
   }
 }
 
-function showHelp() {
-  console.log(`
-${info}Available commands:${reset}
-  help     - Show this help message
-  status   - Show proxy status
-  update   - Check for proxy updates
-  detach   - Detach from proxy (keeps proxy running in background)
-  stop     - Stop the proxy and exit
-  clear    - Clear the terminal
-`);
-}
-
-function showStatus(port: number) {
-  const running = getProxyStatus();
-  if (running) {
-    console.log(`${info}Proxy:${reset} running on port ${port}`);
-  } else {
-    console.log(`${warn}Proxy:${reset} not running`);
-  }
-}
 
 async function startInteractivePrompt(port: number) {
   const rl = readline.createInterface({
@@ -89,55 +69,44 @@ async function startInteractivePrompt(port: number) {
 
   const promptUser = () => {
     rl.question(prompt, async (input) => {
-      const command = input.trim().toLowerCase();
+      const parts = input.trim().split(/\s+/);
+      const command = parts[0]?.toLowerCase() || "";
+      const subcommand = parts[1];
 
       switch (command) {
         case "help":
         case "?":
-          showHelp();
+          handleHelp();
           break;
         case "status":
-          showStatus(port);
+          handleStatus(port);
           break;
         case "update":
-          console.log(`${info}Checking for updates...${reset}`);
-          try {
-            await checkForUpdates();
-            console.log(`${info}Update check complete.${reset}`);
-          } catch (err) {
-            console.error(
-              `${error}Failed to check for updates: ${err}${reset}`,
-            );
-          }
+          await handleUpdate();
           break;
         case "detach":
-          try {
-            isDetaching = true;
-            await detachProxy(port);
-            console.log(`${info}Proxy detached. It will continue running in the background.${reset}`);
-            console.log(`${info}You can reconnect by running the program again.${reset}`);
+          isDetaching = true;
+          const detached = await handleDetach(port);
+          if (detached) {
             rl.close();
             process.exit(0);
             return;
-          } catch (err) {
-            isDetaching = false;
-            console.error(
-              `${error}Failed to detach proxy: ${err}${reset}`,
-            );
           }
+          isDetaching = false;
           break;
         case "stop":
         case "exit":
         case "quit":
-          console.log(`${warn}Shutting down proxy...${reset}`);
-          killProxy();
-          await waitForProxyToStop();
+          await handleStop();
           rl.close();
           process.exit(0);
           return;
         case "clear":
         case "cls":
-          console.clear();
+          handleClear();
+          break;
+        case "stats":
+          await handleStats(subcommand, true);
           break;
         case "":
           // Empty input, just show prompt again
