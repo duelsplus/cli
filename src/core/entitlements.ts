@@ -1,4 +1,4 @@
-import { getUser } from "@core/auth";
+import { getUser } from "@core/user";
 
 export interface Entitlement {
   feature: string;

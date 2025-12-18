@@ -1,6 +1,6 @@
 import { file } from "bun";
 import { write as bunWrite } from "bun";
-import { mkdir, readdir, chmod } from "node:fs/promises"; //https://bun.com/docs/runtime/file-io#directories
+import { readdir, chmod } from "node:fs/promises";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
@@ -9,6 +9,8 @@ import net from "node:net";
 import cliProgress from "cli-progress";
 import { runtimeState } from "@/lib/state";
 import { error, warn, info, reset } from "@lib/constants";
+import { ensureDir } from "@lib/files";
+import { getProxyInstallDir } from "@lib/paths";
 
 const API_BASE = "https://duelsplus.com/api/releases";
 let proxyProc: any = null;
@@ -112,7 +114,7 @@ function getPlatform() {
 }
 
 function getInstallDir() {
-  return path.join(os.homedir(), ".duelsplus", "proxy");
+  return getProxyInstallDir();
 }
 
 export async function isPortFree(port: number): Promise<boolean> {
@@ -146,7 +148,7 @@ async function downloadArtifact(
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to download artifact: ${res.status}`);
 
-  await mkdir(path.dirname(destPath), { recursive: true }).catch(() => {});
+  await ensureDir(path.dirname(destPath));
 
   if (fs.existsSync(destPath)) {
     try {
@@ -247,7 +249,7 @@ export async function checkForUpdates(
   }
 
   const installDir = getInstallDir();
-  await mkdir(installDir, { recursive: true }).catch(() => {});
+  await ensureDir(installDir);
   if (!silent) {
     console.info(`${info}Proxy directory: ${installDir}${reset}`);
   }

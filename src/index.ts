@@ -11,6 +11,9 @@ import {
   waitForProxyToStop,
 } from "@core/proxy";
 import { checkForUpdates as checkForCliUpdates } from "@core/updates";
+import { handleStats } from "@cmd/stats";
+import { handleSettings } from "@cmd/settings";
+import { getConfig } from "@core/settings";
 
 const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),
@@ -27,6 +30,9 @@ const { values, positionals } = parseArgs({
   allowPositionals: true,
 });
 const command = positionals[0];
+const subcommand = positionals[1];
+const arg1 = positionals[2];
+const arg2 = positionals[3];
 
 function showHelp() {
   console.log(`
@@ -38,6 +44,8 @@ ${info}Commands:${reset}
   version             Show the CLI version
   update              Force update the proxy to latest version
   kill                Stop a running proxy
+  stats [user|global] Show statistics (user: your stats, global: server stats)
+  settings [get|set]  Manage settings (enableMsa, proxyPort, autoUpdate)
 
 ${info}Options:${reset}
   --port              Port to run the proxy on (default: 25565)
@@ -116,7 +124,15 @@ proxyEmitter.on("crash", (msg) => {
   }
   switch (command) {
     case undefined:
-      const port = values.port ? Number(values.port) : 25565;
+      let port: number;
+      if (values.port) {
+        port = Number(values.port);
+      } else {
+        // Get port from config, default to 25565 if not set or invalid
+        const config = await getConfig();
+        const configPort = config.proxyPort ? Number(config.proxyPort) : 25565;
+        port = isNaN(configPort) || configPort < 1 || configPort > 65535 ? 25565 : configPort;
+      }
       if (isNaN(port) || port < 1 || port > 65535) {
         console.error(`${error}Invalid port number: ${values.port}${reset}`);
         process.exit(1);
@@ -144,6 +160,14 @@ proxyEmitter.on("crash", (msg) => {
     case "kill":
       killProxy();
       await waitForProxyToStop();
+      process.exit(0);
+      break;
+    case "stats":
+      await handleStats(subcommand, false);
+      process.exit(0);
+      break;
+    case "settings":
+      await handleSettings(subcommand, arg1, arg2, false);
       process.exit(0);
       break;
     default:

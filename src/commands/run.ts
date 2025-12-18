@@ -5,24 +5,28 @@ import {
   reset,
   prompt,
   brand,
-  brandRed,
-  brandDarkRed,
 } from "@lib/constants";
 import { tokenExists, getToken, saveToken, verifyToken } from "@core/auth";
+import { handleStats } from "@cmd/stats";
+import { handleSettings } from "@cmd/settings";
+import { handleHelp } from "@cmd/help";
+import { handleStatus } from "@cmd/status";
+import { handleUpdate } from "@cmd/update";
+import { handleDetach } from "@cmd/detach";
+import { handleStop } from "@cmd/stop";
+import { handleClear } from "@cmd/clear";
 import {
   proxyEmitter,
   launchProxy,
   killProxy,
-  waitForProxyToStop,
-  getProxyStatus,
   checkForExistingProxy,
   attachToExistingProxy,
-  detachProxy,
 } from "@core/proxy";
-import { checkForUpdates } from "@core/proxy";
-import { password, input, select, confirm } from "@inquirer/prompts";
+import { password } from "@inquirer/prompts";
 import * as readline from "node:readline";
-import { version } from "../../package.json";
+import { completer } from "@lib/completer";
+import { getHistoryPath } from "@lib/paths";
+import { readTextFile, writeTextFile, ensureDir } from "@lib/files";
 
 async function promptToken(): Promise<string> {
   while (true) {
@@ -30,9 +34,8 @@ async function promptToken(): Promise<string> {
       message: "Enter your verification token:",
       mask: "*",
       async validate(value: string) {
-        if (value.trim().length === 0) {
+        if (value.trim().length === 0)
           return "Invalid token";
-        }
 
         const verify = await verifyToken(value);
         if (!verify.success) {
@@ -58,86 +61,107 @@ async function promptToken(): Promise<string> {
   }
 }
 
-function showHelp() {
-  console.log(`
-${info}Available commands:${reset}
-  help     - Show this help message
-  status   - Show proxy status
-  update   - Check for proxy updates
-  detach   - Detach from proxy (keeps proxy running in background)
-  stop     - Stop the proxy and exit
-  clear    - Clear the terminal
-`);
+
+async function loadHistory(): Promise<string[]> {
+  const historyPath = getHistoryPath();
+  const content = await readTextFile(historyPath);
+  if (content) {
+    return content.split("\n").filter((line) => line.trim().length > 0);
+  }
+  return [];
 }
 
-function showStatus(port: number) {
-  const running = getProxyStatus();
-  if (running) {
-    console.log(`${info}Proxy:${reset} running on port ${port}`);
-  } else {
-    console.log(`${warn}Proxy:${reset} not running`);
+async function saveHistory(history: string[]): Promise<void> {
+  const historyPath = getHistoryPath();
+  try {
+    // Keep last 1000 entries
+    const recentHistory = history.slice(-1000);
+    await writeTextFile(historyPath, recentHistory.join("\n"));
+  } catch {
+    // Ignore errors
   }
 }
 
 async function startInteractivePrompt(port: number) {
+  // Load history
+  const savedHistory = await loadHistory();
+  
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
+    completer: (line: string) => {
+      return completer(line);
+    },
+    historySize: 1000,
   });
+
+  // Restore history (readline automatically manages history, we just need to populate it)
+  // Note: readline's history is read-only, so we'll track it separately for saving
+  const commandHistory: string[] = [...savedHistory];
 
   let isDetaching = false;
 
   const promptUser = () => {
     rl.question(prompt, async (input) => {
-      const command = input.trim().toLowerCase();
+      const trimmedInput = input.trim();
+      
+      // Track history for saving (limit to 1000 entries)
+      if (trimmedInput) {
+        // Remove if already exists to avoid duplicates
+        const index = commandHistory.indexOf(trimmedInput);
+        if (index !== -1) {
+          commandHistory.splice(index, 1);
+        }
+        commandHistory.push(trimmedInput);
+        // Keep only last 1000 entries
+        if (commandHistory.length > 1000) {
+          commandHistory.shift();
+        }
+      }
+      
+      const parts = trimmedInput.split(/\s+/);
+      const command = parts[0]?.toLowerCase() || "";
+      const subcommand = parts[1];
+      const arg1 = parts[2];
+      const arg2 = parts[3];
 
       switch (command) {
         case "help":
         case "?":
-          showHelp();
+          handleHelp();
           break;
         case "status":
-          showStatus(port);
+          handleStatus(port);
           break;
         case "update":
-          console.log(`${info}Checking for updates...${reset}`);
-          try {
-            await checkForUpdates();
-            console.log(`${info}Update check complete.${reset}`);
-          } catch (err) {
-            console.error(
-              `${error}Failed to check for updates: ${err}${reset}`,
-            );
-          }
+          await handleUpdate();
           break;
         case "detach":
-          try {
-            isDetaching = true;
-            await detachProxy(port);
-            console.log(`${info}Proxy detached. It will continue running in the background.${reset}`);
-            console.log(`${info}You can reconnect by running the program again.${reset}`);
+          isDetaching = true;
+          const detached = await handleDetach(port);
+          if (detached) {
             rl.close();
             process.exit(0);
             return;
-          } catch (err) {
-            isDetaching = false;
-            console.error(
-              `${error}Failed to detach proxy: ${err}${reset}`,
-            );
           }
+          isDetaching = false;
           break;
         case "stop":
         case "exit":
         case "quit":
-          console.log(`${warn}Shutting down proxy...${reset}`);
-          killProxy();
-          await waitForProxyToStop();
+          await handleStop();
           rl.close();
           process.exit(0);
           return;
         case "clear":
         case "cls":
-          console.clear();
+          handleClear();
+          break;
+        case "stats":
+          await handleStats(subcommand, true);
+          break;
+        case "settings":
+          await handleSettings(subcommand, arg1, arg2, true);
           break;
         case "":
           // Empty input, just show prompt again
@@ -151,11 +175,13 @@ async function startInteractivePrompt(port: number) {
     });
   };
 
-  rl.on("close", () => {
+  rl.on("close", async () => {
+    // Save history before closing
+    await saveHistory(commandHistory);
+    
     // Handle Ctrl+C or stream end - but not when detaching
-    if (!isDetaching) {
+    if (!isDetaching)
       killProxy();
-    }
   });
 
   console.log(`\n${info}Type 'help' for available commands.${reset}\n`);
@@ -165,14 +191,12 @@ async function startInteractivePrompt(port: number) {
 export default async function run(port = 25565) {
   let token: string | null = null;
   let enteredManually = false;
-  if (await tokenExists()) {
+  if (await tokenExists())
     token = await getToken();
-  }
 
   //verification
-  while (!token) {
+  while (!token)
     token = await promptToken();
-  }
 
   //const user = await ensureEntitled(token);
   //
