@@ -13,6 +13,7 @@ import {
 import { checkForUpdates as checkForCliUpdates } from "@core/updates";
 import { handleStats } from "@cmd/stats";
 import { handleSettings } from "@cmd/settings";
+import { getConfig } from "@core/settings";
 
 const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),
@@ -123,7 +124,15 @@ proxyEmitter.on("crash", (msg) => {
   }
   switch (command) {
     case undefined:
-      const port = values.port ? Number(values.port) : 25565;
+      let port: number;
+      if (values.port) {
+        port = Number(values.port);
+      } else {
+        // Get port from config, default to 25565 if not set or invalid
+        const config = await getConfig();
+        const configPort = config.proxyPort ? Number(config.proxyPort) : 25565;
+        port = isNaN(configPort) || configPort < 1 || configPort > 65535 ? 25565 : configPort;
+      }
       if (isNaN(port) || port < 1 || port > 65535) {
         console.error(`${error}Invalid port number: ${values.port}${reset}`);
         process.exit(1);

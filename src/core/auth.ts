@@ -1,7 +1,7 @@
-import { file, write } from "bun";
-import { mkdir, rm, chmod } from "node:fs/promises"; //https://bun.com/docs/runtime/file-io#directories
-import path from "node:path";
-import os from "node:os";
+import { file } from "bun";
+import { rm, chmod } from "node:fs/promises";
+import { getTokenPath, getAccountAuthPath } from "@lib/paths";
+import { readJsonFile, writeJsonFile, ensureDir } from "@lib/files";
 
 interface User {
   id: string;
@@ -11,28 +11,20 @@ interface User {
   //which is not included here; this interface exists to satisfy eslint
 }
 
-const TOKEN_PATH = path.join(os.homedir(), ".duelsplus", "tokens.json");
-const ACCOUNT_PATH = path.join(os.homedir(), ".duelsplus", "accountAuth");
+const TOKEN_PATH = getTokenPath();
+const ACCOUNT_PATH = getAccountAuthPath();
 
 export async function tokenExists(): Promise<boolean> {
   return await file(TOKEN_PATH).exists();
 }
 
 export async function getToken(): Promise<string | null> {
-  try {
-    const raw = await file(TOKEN_PATH).text();
-    const parsed = JSON.parse(raw);
-    return parsed.token ?? null;
-  } catch {
-    return null;
-  }
+  const parsed = await readJsonFile<{ token?: string }>(TOKEN_PATH);
+  return parsed?.token ?? null;
 }
 
 export async function saveToken(token: string) {
-  const dir = path.dirname(TOKEN_PATH);
-  //use node:fs/promises mkdir per bun docs
-  await mkdir(dir, { recursive: true }).catch(() => {});
-  await write(TOKEN_PATH, JSON.stringify({ token, verifiedAt: Date.now() }));
+  await writeJsonFile(TOKEN_PATH, { token, verifiedAt: Date.now() });
   try {
     await chmod(TOKEN_PATH, 0o600);
   } catch {

@@ -24,6 +24,9 @@ import {
 } from "@core/proxy";
 import { password } from "@inquirer/prompts";
 import * as readline from "node:readline";
+import { completer } from "@lib/completer";
+import { getHistoryPath } from "@lib/paths";
+import { readTextFile, writeTextFile, ensureDir } from "@lib/files";
 
 async function promptToken(): Promise<string> {
   while (true) {
@@ -59,17 +62,64 @@ async function promptToken(): Promise<string> {
 }
 
 
+async function loadHistory(): Promise<string[]> {
+  const historyPath = getHistoryPath();
+  const content = await readTextFile(historyPath);
+  if (content) {
+    return content.split("\n").filter((line) => line.trim().length > 0);
+  }
+  return [];
+}
+
+async function saveHistory(history: string[]): Promise<void> {
+  const historyPath = getHistoryPath();
+  try {
+    // Keep last 1000 entries
+    const recentHistory = history.slice(-1000);
+    await writeTextFile(historyPath, recentHistory.join("\n"));
+  } catch {
+    // Ignore errors
+  }
+}
+
 async function startInteractivePrompt(port: number) {
+  // Load history
+  const savedHistory = await loadHistory();
+  
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
+    completer: (line: string) => {
+      return completer(line);
+    },
+    historySize: 1000,
   });
+
+  // Restore history (readline automatically manages history, we just need to populate it)
+  // Note: readline's history is read-only, so we'll track it separately for saving
+  const commandHistory: string[] = [...savedHistory];
 
   let isDetaching = false;
 
   const promptUser = () => {
     rl.question(prompt, async (input) => {
-      const parts = input.trim().split(/\s+/);
+      const trimmedInput = input.trim();
+      
+      // Track history for saving (limit to 1000 entries)
+      if (trimmedInput) {
+        // Remove if already exists to avoid duplicates
+        const index = commandHistory.indexOf(trimmedInput);
+        if (index !== -1) {
+          commandHistory.splice(index, 1);
+        }
+        commandHistory.push(trimmedInput);
+        // Keep only last 1000 entries
+        if (commandHistory.length > 1000) {
+          commandHistory.shift();
+        }
+      }
+      
+      const parts = trimmedInput.split(/\s+/);
       const command = parts[0]?.toLowerCase() || "";
       const subcommand = parts[1];
       const arg1 = parts[2];
@@ -125,7 +175,10 @@ async function startInteractivePrompt(port: number) {
     });
   };
 
-  rl.on("close", () => {
+  rl.on("close", async () => {
+    // Save history before closing
+    await saveHistory(commandHistory);
+    
     // Handle Ctrl+C or stream end - but not when detaching
     if (!isDetaching)
       killProxy();
