@@ -144,7 +144,7 @@ async function downloadArtifact(
   destPath: string,
   emit?: (ev: string, payload?: any) => void,
 ) {
-  const url = `${API_BASE}/artifact?assetId=${encodeURIComponent(assetId)}`;
+  const url = `${API_BASE}/signed?assetId=${encodeURIComponent(assetId)}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to download artifact: ${res.status}`);
 
@@ -343,7 +343,7 @@ export async function launchProxy(
       for await (const chunk of proc.stdout as any) {
         if (isIntentionalShutdown)
           continue;
-        
+
         const text = new TextDecoder().decode(chunk).trim();
         if (
           !text.includes("[launcher:ign]") &&
@@ -363,7 +363,7 @@ export async function launchProxy(
       for await (const chunk of proc.stderr as any) {
         if (isIntentionalShutdown)
           continue;
-        
+
         emit?.("log", new TextDecoder().decode(chunk).trim());
       }
     } catch (err) {
@@ -527,7 +527,7 @@ export async function waitForProxyToStop() {
       // no need to forward the error
     }
   }
-  
+
   // gotta double check, so we poll babyyy
   return new Promise<void>((resolve) => {
     if (!getProxyStatus()) {
