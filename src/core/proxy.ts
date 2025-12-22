@@ -1,6 +1,6 @@
 import { file } from "bun";
 import { write as bunWrite } from "bun";
-import { readdir, chmod } from "node:fs/promises";
+import { readdir, chmod, mkdir } from "node:fs/promises";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
@@ -34,6 +34,7 @@ function getPidFilePath() {
 interface PidFileData {
   pid: number;
   port: number;
+  controlPort?: number;
 }
 
 async function savePidFile(pid: number, port: number) {
@@ -77,6 +78,58 @@ function isProcessRunning(pid: number): boolean {
   } catch {
     return false;
   }
+}
+
+// Read the proxy's lock file (different from CLI's PID file)
+// The proxy writes this file with control port info for graceful shutdown
+function getProxyLockFilePath() {
+  return path.join(os.homedir(), ".duelsplus", "proxy.lock");
+}
+
+async function readProxyLockFile(): Promise<PidFileData | null> {
+  const lockFilePath = getProxyLockFilePath();
+  if (!fs.existsSync(lockFilePath)) {
+    return null;
+  }
+  try {
+    const content = await Bun.file(lockFilePath).text();
+    return JSON.parse(content) as PidFileData;
+  } catch {
+    return null;
+  }
+}
+
+// Send shutdown command via TCP control socket
+// Returns true if shutdown was acknowledged, false otherwise
+async function sendShutdownCommand(controlPort: number, timeout = 5000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    const timer = setTimeout(() => {
+      socket.destroy();
+      resolve(false);
+    }, timeout);
+
+    socket.connect(controlPort, "127.0.0.1", () => {
+      socket.write("shutdown");
+    });
+
+    socket.on("data", (data) => {
+      clearTimeout(timer);
+      if (data.toString().trim() === "ok") {
+        socket.destroy();
+        resolve(true);
+      }
+    });
+
+    socket.on("error", () => {
+      clearTimeout(timer);
+      resolve(false);
+    });
+
+    socket.on("close", () => {
+      clearTimeout(timer);
+    });
+  });
 }
 
 export async function checkForExistingProxy(port: number): Promise<{ pid: number; port: number } | null> {
@@ -341,9 +394,6 @@ export async function launchProxy(
   (async () => {
     try {
       for await (const chunk of proc.stdout as any) {
-        if (isIntentionalShutdown)
-          continue;
-
         const text = new TextDecoder().decode(chunk).trim();
         if (
           !text.includes("[launcher:ign]") &&
@@ -361,9 +411,6 @@ export async function launchProxy(
   (async () => {
     try {
       for await (const chunk of proc.stderr as any) {
-        if (isIntentionalShutdown)
-          continue;
-
         emit?.("log", new TextDecoder().decode(chunk).trim());
       }
     } catch (err) {
@@ -427,10 +474,28 @@ export async function attachToExistingProxy(pid: number, port: number, emit?: (e
   })();
 }
 
-export function killProxy() {
+export async function killProxy() {
+  isIntentionalShutdown = true;
+
+  // Try graceful shutdown via control socket first
+  // This works on all platforms including Windows
+  const lockData = await readProxyLockFile();
+  if (lockData?.controlPort) {
+    const success = await sendShutdownCommand(lockData.controlPort);
+    if (success) {
+      // Graceful shutdown initiated - don't clear proxyProc yet
+      // Let waitForProxyToStop() handle waiting for actual exit
+      // so that stdout logs can be read before the process terminates
+      isAttachedToExisting = false;
+      attachedPid = null;
+      attachedPort = null;
+      return;
+    }
+  }
+
+  // Fallback to forceful kill if control socket fails
   if (isAttachedToExisting && attachedPid !== null) {
     // Kill the attached process by PID
-    isIntentionalShutdown = true;
     try {
       if (os.platform() === "win32") {
         process.kill(attachedPid);
@@ -453,7 +518,6 @@ export function killProxy() {
   }
 
   if (proxyProc) {
-    isIntentionalShutdown = true;
     try {
       if (os.platform() === "win32") {
         // Windows doesn't support SIGINT/SIGTERM properly, use kill() without signal
@@ -526,19 +590,25 @@ export async function waitForProxyToStop() {
       // the process here should have already exited
       // no need to forward the error
     }
+    isProxyRunning = false;
+    proxyProc = null;
+    return;
   }
 
-  // gotta double check, so we poll babyyy
-  return new Promise<void>((resolve) => {
-    if (!getProxyStatus()) {
-      resolve();
-    }
+  // No proxyProc - check if there's a PID in the lock file to wait for
+  const lockData = await readProxyLockFile();
+  if (lockData?.pid) {
+    return new Promise<void>((resolve) => {
+      const interval = setInterval(() => {
+        if (!isProcessRunning(lockData.pid)) {
+          isProxyRunning = false;
+          clearInterval(interval);
+          resolve();
+        }
+      }, 100);
+    });
+  }
 
-    const interval = setInterval(() => {
-      if (!getProxyStatus()) {
-        clearInterval(interval);
-        resolve();
-      }
-    }, 100);
-  });
+  // No process to wait for
+  isProxyRunning = false;
 }

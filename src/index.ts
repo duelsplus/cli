@@ -93,7 +93,6 @@ proxyEmitter.on("crash", (msg) => {
   if (values.proxy !== undefined) {
     if (typeof values.proxy === "string") {
       runtimeState.proxyPath = values.proxy;
-      console.log(`${info}Using custom proxy binary: ${values.proxy}${reset}`);
     } else {
       console.error(
         `${error}--proxy requires a value. Example: --proxy ./duelsplus-0.0.1-node18-linux-x64${reset}`,
