@@ -20,7 +20,8 @@
       "@/*": ["./src/*"],
       "@core/*": ["./src/core/*"],
       "@cmd/*": ["./src/commands/*"],
-      "@lib/*": ["./src/lib/*"]
+      "@lib/*": ["./src/lib/*"],
+      "@components/*": ["./src/components/*"]
     },
 
     // Best practices

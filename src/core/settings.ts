@@ -1,30 +1,34 @@
 import { getConfigPath } from "@lib/paths";
 import { readJsonFile, writeJsonFile } from "@lib/files";
 
-interface Config {
-  minimizeToTray?: boolean;
+export interface Config {
   autoUpdate?: boolean;
-  openLogsOnLaunch?: boolean;
-  reducedMotion?: boolean;
-  enableRpc?: boolean;
   proxyPort?: string;
   enableMsa?: boolean;
 }
 
-const defaultConfig: Config = {
-  minimizeToTray: false,
+export const defaultConfig: Config = {
   autoUpdate: true,
-  openLogsOnLaunch: true,
-  reducedMotion: false,
-  enableRpc: true,
   proxyPort: "25565",
   enableMsa: false,
 };
 
+// All valid config keys for validation
+export const configKeys = Object.keys(defaultConfig) as (keyof Config)[];
+
+// Boolean config keys
+export const booleanConfigKeys: (keyof Config)[] = [
+  "autoUpdate",
+  "enableMsa",
+];
+
+// String config keys
+export const stringConfigKeys: (keyof Config)[] = ["proxyPort"];
+
 export async function getConfig(): Promise<Config> {
   const configPath = getConfigPath();
   const config = await readJsonFile<Config>(configPath);
-  return config ?? defaultConfig;
+  return { ...defaultConfig, ...config };
 }
 
 export async function setConfig(key: keyof Config, value: string | boolean): Promise<boolean> {
@@ -32,11 +36,11 @@ export async function setConfig(key: keyof Config, value: string | boolean): Pro
     const config = await getConfig();
     const configPath = getConfigPath();
 
-    // Update the config value
-    if (key === "proxyPort") {
-      config.proxyPort = String(value);
-    } else if (key === "autoUpdate" || key === "enableMsa") {
-      config[key] = Boolean(value);
+    // Update the config value based on key type
+    if (stringConfigKeys.includes(key)) {
+      (config as Record<string, string | boolean>)[key] = String(value);
+    } else if (booleanConfigKeys.includes(key)) {
+      (config as Record<string, string | boolean>)[key] = Boolean(value);
     } else {
       return false; // Invalid key
     }

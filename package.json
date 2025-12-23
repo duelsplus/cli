@@ -16,8 +16,13 @@
   "dependencies": {
     "@inquirer/prompts": "^8.0.2",
     "@types/cli-progress": "^3.11.6",
+    "@types/react": "^19.2.7",
     "@types/semver": "^7.7.1",
     "cli-progress": "^3.12.0",
+    "ink": "^6.6.0",
+    "ink-select-input": "^6.2.0",
+    "ink-text-input": "^6.0.0",
+    "react": "^19.2.3",
     "semver": "^7.7.3"
   }
 }

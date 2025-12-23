@@ -45,7 +45,10 @@ ${info}Commands:${reset}
   update              Force update the proxy to latest version
   kill                Stop a running proxy
   stats [user|global] Show statistics (user: your stats, global: server stats)
-  settings [get|set]  Manage settings (enableMsa, proxyPort, autoUpdate)
+  settings            Interactive settings editor
+  settings list       List all settings
+  settings get <key>  Get a specific setting
+  settings set <k> <v> Set a setting value
 
 ${info}Options:${reset}
   --port              Port to run the proxy on (default: 25565)
