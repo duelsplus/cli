@@ -12,7 +12,8 @@ import { error, warn, info, reset } from "@lib/constants";
 import { ensureDir } from "@lib/files";
 import { getProxyInstallDir } from "@lib/paths";
 
-const API_BASE = "https://duelsplus.com/api/releases";
+const API_BASE = "https://proxy-updates.duelsplus.com/v1/releases";
+const API_BASE_BETA = "https://proxy-updates.duelsplus.com/v1/releases/beta";
 let proxyProc: any = null;
 let proxyPath: string | null = null; // Cache the proxy path
 let isProxyRunning = false;
@@ -286,9 +287,133 @@ async function downloadArtifact(
   }
 }
 
+// The proxy filename encodes everything we need:
+//   duelsplus-1.8.0-beta-node18-win-x64.exe   -> version "1.8.0", beta = true
+//   duelsplus-1.8.0-node18-win-x64.exe        -> version "1.8.0", beta = false
+
+interface InstalledProxyInfo {
+  fileName: string;
+  version: string;
+  isBeta: boolean;
+}
+
+/**
+ * Parse version and beta flag out of a proxy filename.
+ * Expected pattern: duelsplus-{version}[-beta]-node18-{platform}.exe
+ */
+function parseProxyFilename(fileName: string): { version: string; isBeta: boolean } | null {
+  // Match: duelsplus-<version>-beta-node or duelsplus-<version>-node
+  const match = fileName.match(/^duelsplus-(\d+\.\d+\.\d+)(-beta)?-node/);
+  if (!match) return null;
+  return {
+    version: match[1],
+    isBeta: match[2] === "-beta",
+  };
+}
+
+/**
+ * Scan the install directory and return info about whatever proxy binary is
+ * currently downloaded.  Returns `null` if nothing is installed.
+ */
+async function getInstalledProxy(): Promise<InstalledProxyInfo | null> {
+  const installDir = getInstallDir();
+  const platformTag = getPlatform();
+
+  let files: string[];
+  try {
+    files = await readdir(installDir);
+  } catch {
+    return null;
+  }
+
+  for (const f of files) {
+    if (!f.includes(platformTag)) continue;
+    const parsed = parseProxyFilename(f);
+    if (parsed) {
+      return { fileName: f, ...parsed };
+    }
+  }
+  return null;
+}
+
+/**
+ * Delete all proxy binaries in the install directory except `keep`.
+ * Pass `null` to delete everything (full purge).
+ */
+export async function cleanupProxyBinaries(keep: string | null = null) {
+  const installDir = getInstallDir();
+  const platformTag = getPlatform();
+
+  try {
+    const files = await readdir(installDir);
+    for (const f of files) {
+      if (keep && f === keep) continue;
+      if (f.includes(platformTag)) {
+        try { fs.unlinkSync(path.join(installDir, f)); } catch { /* best-effort */ }
+      }
+    }
+  } catch { /* ignore */ }
+}
+
+/**
+ * Returns `true` when the installed proxy is a beta build but the user is
+ * not (or is no longer) eligible for beta.  Callers should purge the proxy
+ * and re-download stable.
+ */
+export async function isInstalledProxyBetaAndShouldNotBe(
+  userIsBetaEligible: boolean,
+  receiveBetaReleases: boolean,
+): Promise<boolean> {
+  const installed = await getInstalledProxy();
+  if (!installed) return false; // nothing installed
+
+  // Installed build is beta, but user lost eligibility or turned beta off
+  if (installed.isBeta && (!userIsBetaEligible || !receiveBetaReleases)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Returns `true` when the installed proxy version/track differs from the
+ * latest release the user is supposed to have (stable or beta).
+ */
+export async function isProxyVersionStale(
+  useBeta: boolean,
+): Promise<{ stale: boolean; reason?: string }> {
+  const installed = await getInstalledProxy();
+  if (!installed) return { stale: false }; // nothing installed — download will handle it
+
+  const url = useBeta ? API_BASE_BETA : API_BASE;
+  const res = await fetch(url);
+  if (!res.ok) return { stale: false }; // can't reach API, let normal flow handle it
+  const releases = (await res.json()) as any[];
+  const latest =
+    releases.find((r: any) => r.isLatest) ?? releases[0];
+  if (!latest) return { stale: false };
+
+  if (installed.version !== latest.version) {
+    return {
+      stale: true,
+      reason: `Installed ${installed.version} (${installed.isBeta ? "beta" : "stable"}) but latest is ${latest.version}`,
+    };
+  }
+
+  // Version matches but track changed (e.g. had beta, now should use stable)
+  if (installed.isBeta !== useBeta) {
+    return {
+      stale: true,
+      reason: `Installed track is ${installed.isBeta ? "beta" : "stable"} but should be ${useBeta ? "beta" : "stable"}`,
+    };
+  }
+
+  return { stale: false };
+}
+
 export async function checkForUpdates(
   emit?: (ev: string, payload?: any) => void,
   silent = false,
+  useBeta = false,
 ) {
   if (runtimeState.proxyPath) {
     const absolutePath = path.resolve(runtimeState.proxyPath);
@@ -307,12 +432,19 @@ export async function checkForUpdates(
     console.info(`${info}Proxy directory: ${installDir}${reset}`);
   }
 
-  const releasesRes = await fetch(API_BASE);
+  if (useBeta && !silent) {
+    console.info(`${info}Beta releases enabled${reset}`);
+  }
+
+  const url = useBeta ? API_BASE_BETA : API_BASE;
+  const releasesRes = await fetch(url);
   if (!releasesRes.ok)
     throw new Error(`Failed to fetch releases: ${releasesRes.status}`);
   const releases = await releasesRes.json();
 
-  const latest = (releases as any[]).find((r) => r.isLatest);
+  // Prefer isLatest, fall back to first (newest) entry
+  const latest =
+    (releases as any[]).find((r) => r.isLatest) ?? (releases as any[])[0];
   if (!latest) throw new Error("No latest release found");
 
   const platformTag = getPlatform();
@@ -331,8 +463,8 @@ export async function checkForUpdates(
   }
 
   const filePath = path.join(installDir, asset.name);
-  //todo: return checksums in api and compare with downloaded filePath
-  //instead of assuming based on filesize
+
+  // Determine whether a download is needed
   const exists = await file(filePath).exists();
   let needsDownload = !exists;
   if (runtimeState.forceUpdate) {
@@ -351,10 +483,26 @@ export async function checkForUpdates(
     }
   }
 
+  // Also check if the installed filename doesn't match the expected asset
+  if (!needsDownload) {
+    const installed = await getInstalledProxy();
+    if (installed && installed.fileName !== asset.name) {
+      if (!silent) {
+        console.info(
+          `${info}Installed ${installed.fileName} differs from expected ${asset.name}. Updating...${reset}`,
+        );
+      }
+      needsDownload = true;
+    }
+  }
+
   if (needsDownload) {
     emit?.("status", { status: "Downloading proxy", version: latest.version });
     await downloadArtifact(asset.id, filePath, emit);
   }
+
+  // Delete every other proxy binary, keep only the one we just ensured
+  await cleanupProxyBinaries(asset.name);
 
   return filePath;
 }
@@ -362,6 +510,7 @@ export async function checkForUpdates(
 export async function launchProxy(
   port = 25565,
   emit?: (ev: string, payload?: any) => void,
+  useBeta = false,
 ) {
   const free = await isPortFree(port);
   if (!free) {
@@ -370,7 +519,7 @@ export async function launchProxy(
     );
   }
 
-  const currentProxyPath = await checkForUpdates(emit);
+  const currentProxyPath = await checkForUpdates(emit, false, useBeta);
   proxyPath = currentProxyPath; // Cache for later use
   if (!fs.existsSync(currentProxyPath))
     throw new Error(`Proxy not found at ${currentProxyPath}`);

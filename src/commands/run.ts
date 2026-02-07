@@ -21,7 +21,12 @@ import {
   killProxy,
   checkForExistingProxy,
   attachToExistingProxy,
+  isInstalledProxyBetaAndShouldNotBe,
+  cleanupProxyBinaries,
+  isProxyVersionStale,
 } from "@core/proxy";
+import { fetchUser, isBetaEligible } from "@core/entitlements";
+import { getConfig, setConfig } from "@core/settings";
 import { password } from "@inquirer/prompts";
 import * as readline from "node:readline";
 import { completer } from "@lib/completer";
@@ -190,17 +195,51 @@ async function startInteractivePrompt(port: number) {
 
 export default async function run(port = 25565) {
   let token: string | null = null;
-  let enteredManually = false;
   if (await tokenExists())
     token = await getToken();
 
-  //verification
+  // Verification
   while (!token)
     token = await promptToken();
 
-  //const user = await ensureEntitled(token);
-  //
-  
+  const user = await fetchUser(token);
+  if (!user) {
+    console.error(`${error}Failed to fetch user data. Cannot continue.${reset}`);
+    process.exit(1);
+  }
+
+  const config = await getConfig();
+  const betaEligible = isBetaEligible(user);
+  let useBeta = Boolean(config.receiveBetaReleases) && betaEligible;
+
+  // If beta is enabled in config but the user is NOT eligible, revoke it
+  if (config.receiveBetaReleases && !betaEligible) {
+    console.warn(
+      `${warn}You have beta releases enabled but you don't have the required permissions (tester, partner, developer, or admin).${reset}`,
+    );
+    console.info(`${info}Disabling beta releases and switching to stable.${reset}`);
+    await setConfig("receiveBetaReleases", false);
+    useBeta = false;
+  }
+
+  // Purge beta proxy if the user shouldn't have it
+  const shouldPurge = await isInstalledProxyBetaAndShouldNotBe(betaEligible, useBeta);
+  if (shouldPurge) {
+    console.warn(
+      `${warn}A beta proxy build is installed but you are not eligible for beta. Removing it...${reset}`,
+    );
+    await cleanupProxyBinaries(null); // delete everything, correct version will be downloaded
+    console.info(`${info}Beta proxy removed. A stable build will be downloaded.${reset}`);
+  }
+
+  // Check version mismatch
+  const { stale, reason } = await isProxyVersionStale(useBeta);
+  if (stale) {
+    console.info(`${info}Proxy version mismatch: ${reason}${reset}`);
+    console.info(`${info}Removing outdated proxy. The correct version will be downloaded...${reset}`);
+    await cleanupProxyBinaries(null); // delete everything, correct version will be downloaded
+  }
+
   // Check for existing proxy process
   const existingProxy = await checkForExistingProxy(port);
   if (existingProxy) {
@@ -247,7 +286,7 @@ export default async function run(port = 25565) {
         );
       }
     }
-  });
+  }, useBeta);
 
   // Wait for proxy to be ready before starting interactive prompt
   await proxyReadyPromise;

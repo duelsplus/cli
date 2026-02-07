@@ -152,10 +152,13 @@ proxyEmitter.on("crash", (msg) => {
       console.log(`v${version}`);
       process.exit(0);
       break;
-    case "update":
-      await checkForUpdates();
+    case "update": {
+      const updateConfig = await getConfig();
+      const updateUseBeta = Boolean(updateConfig.receiveBetaReleases);
+      await checkForUpdates(undefined, false, updateUseBeta);
       process.exit(0);
       break;
+    }
     case "kill":
       killProxy();
       await waitForProxyToStop();

@@ -1,34 +1,49 @@
 import { getUser } from "@core/user";
 
-export interface Entitlement {
-  feature: string;
-  hasAccess: boolean;
+
+export type Perm =
+  | "admin"
+  | "developer"
+  | "moderator"
+  | "tester"
+  | "partner"
+  | "leaderboard"
+  | "supporter"
+  | "combo"
+  | "standard";
+
+export interface User {
+  id: string;
+  discordId: string;
+  username: string;
+  perms: Perm[];
+  isBanned: boolean;
 }
 
-interface User {
-  [key: string]: any;
+/** Check whether the user has a specific permission. */
+export function hasPerm(user: User | undefined | null, perm: Perm): boolean {
+  if (!user || !user.perms) return false;
+  return user.perms.includes(perm);
 }
 
-export async function hasEntitlement(
-  token: string,
-  feature: string,
-): Promise<Entitlement> {
+/** Beta access requires one of: tester, partner, developer, or admin. */
+export function isBetaEligible(user: User | undefined | null): boolean {
+  return (
+    hasPerm(user, "tester") ||
+    hasPerm(user, "partner") ||
+    hasPerm(user, "developer") ||
+    hasPerm(user, "admin")
+  );
+}
+
+export async function fetchUser(token: string): Promise<User | null> {
   const res = await getUser(token);
-  if (!res.success) {
-    return { feature, hasAccess: false };
+  if (!res.success) return null;
+
+  const data = res.data as User;
+  // Normalise – the API may omit the array for users with no special perms
+  if (!Array.isArray(data.perms)) {
+    data.perms = [];
   }
-
-  const user = res.data as User;
-  const value = Boolean(user[feature]);
-  const hasAccess = feature.startsWith("is") ? !value : value;
-
-  return { feature, hasAccess };
-}
-
-export async function ensureEntitlement(token: string, feature: string) {
-  const ent = await hasEntitlement(token, feature);
-  if (!ent.hasAccess) {
-    throw new Error(`Not entitled to "${feature}"`);
-  }
-  return ent;
+  return data;
 }

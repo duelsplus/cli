@@ -1,7 +1,7 @@
 import { getConfigPath } from "@lib/paths";
 import { readJsonFile, writeJsonFile } from "@lib/files";
 
-interface Config {
+export interface Config {
   minimizeToTray?: boolean;
   autoUpdate?: boolean;
   openLogsOnLaunch?: boolean;
@@ -9,6 +9,7 @@ interface Config {
   enableRpc?: boolean;
   proxyPort?: string;
   enableMsa?: boolean;
+  receiveBetaReleases?: boolean;
 }
 
 const defaultConfig: Config = {
@@ -19,6 +20,7 @@ const defaultConfig: Config = {
   enableRpc: true,
   proxyPort: "25565",
   enableMsa: false,
+  receiveBetaReleases: false,
 };
 
 export async function getConfig(): Promise<Config> {
@@ -35,7 +37,7 @@ export async function setConfig(key: keyof Config, value: string | boolean): Pro
     // Update the config value
     if (key === "proxyPort") {
       config.proxyPort = String(value);
-    } else if (key === "autoUpdate" || key === "enableMsa") {
+    } else if (key === "autoUpdate" || key === "enableMsa" || key === "receiveBetaReleases") {
       config[key] = Boolean(value);
     } else {
       return false; // Invalid key

@@ -11,9 +11,10 @@ export async function handleSettings(
     // Show current settings
     const config = await getConfig();
     console.log(`\n${info}Current Settings:${reset}`);
-    console.log(`  enableMsa:    ${config.enableMsa ?? false}`);
-    console.log(`  proxyPort:    ${config.proxyPort ?? "25565"}`);
-    console.log(`  autoUpdate:   ${config.autoUpdate ?? true}\n`);
+    console.log(`  enableMsa:            ${config.enableMsa ?? false}`);
+    console.log(`  proxyPort:            ${config.proxyPort ?? "25565"}`);
+    console.log(`  autoUpdate:           ${config.autoUpdate ?? true}`);
+    console.log(`  receiveBetaReleases:  ${config.receiveBetaReleases ?? false}\n`);
     return;
   }
 
@@ -28,7 +29,7 @@ export async function handleSettings(
       return;
     }
 
-    const validKeys = ["enableMsa", "proxyPort", "autoUpdate"];
+    const validKeys = ["enableMsa", "proxyPort", "autoUpdate", "receiveBetaReleases"];
     if (!validKeys.includes(key)) {
       const message = `${error}Invalid key. Valid keys: ${validKeys.join(", ")}${reset}`;
       console.log(message);
@@ -37,7 +38,7 @@ export async function handleSettings(
       return;
     }
 
-    const val = await getConfigValue(key as "enableMsa" | "proxyPort" | "autoUpdate");
+    const val = await getConfigValue(key as "enableMsa" | "proxyPort" | "autoUpdate" | "receiveBetaReleases");
     console.log(`${info}${key}:${reset} ${val ?? "not set"}`);
     return;
   }
@@ -51,7 +52,7 @@ export async function handleSettings(
       return;
     }
 
-    const validKeys = ["enableMsa", "proxyPort", "autoUpdate"];
+    const validKeys = ["enableMsa", "proxyPort", "autoUpdate", "receiveBetaReleases"];
     if (!validKeys.includes(key)) {
       const message = `${error}Invalid key. Valid keys: ${validKeys.join(", ")}${reset}`;
       console.log(message);
@@ -72,7 +73,7 @@ export async function handleSettings(
         return;
       }
       parsedValue = String(port);
-    } else if (key === "autoUpdate" || key === "enableMsa") {
+    } else if (key === "autoUpdate" || key === "enableMsa" || key === "receiveBetaReleases") {
       const lowerValue = value.toLowerCase();
       if (lowerValue === "true" || lowerValue === "1" || lowerValue === "yes" || lowerValue === "on") {
         parsedValue = true;
@@ -93,7 +94,7 @@ export async function handleSettings(
       return;
     }
 
-    const success = await setConfig(key as "enableMsa" | "proxyPort" | "autoUpdate", parsedValue);
+    const success = await setConfig(key as "enableMsa" | "proxyPort" | "autoUpdate" | "receiveBetaReleases", parsedValue);
     if (success) {
       console.log(`${info}Setting ${key} updated to ${parsedValue}${reset}`);
     } else {
