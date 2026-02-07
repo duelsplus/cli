@@ -2,16 +2,6 @@
 A lightweight CLI launcher for running the Duels+ proxy. Alternative to the [GUI launcher](https://duelsplus.com/download).
 
 ## Installation
-You can install the CLI in two ways:
-
-### Installer (Linux/macOS only)
-```bash
-curl -sSL https://get.duelsplus.com | bash
-```
-
-This script downloads the latest release for your target and installs the `duelsplus` binary.
-
-### Manually
 Download the latest release for your target (os/arch) from the [releases](https://github.com/duelsplus/cli/releases) page.
 
 ## Usage
