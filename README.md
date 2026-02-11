@@ -1,6 +1,8 @@
 # Duels+ CLI
 A lightweight CLI launcher for running the Duels+ proxy. Alternative to the [GUI launcher](https://duelsplus.com/download).
 
+> um its like the window code pops out of mauybe -Navi
+
 ## Installation
 Download the latest release for your target (os/arch) from the [releases](https://github.com/duelsplus/cli/releases) page.
 
@@ -19,7 +21,7 @@ bun install
 
 ### Run the CLI
 ```bash
-npm start
+bun start
 ```
 
 or
